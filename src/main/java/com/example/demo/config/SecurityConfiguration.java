@@ -16,8 +16,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
-// 프로젝트 내부의 엔티티 클래스(Member) 위치를 명시적으로 임포트해야 합니다.
-// (java.lang.reflect.Member가 아니라 도메인 패키지의 Member여야 정상 작동합니다)
 import com.example.demo.model.Member;
 import com.example.demo.model.MemberUser;
 import com.example.demo.model.Authority;
@@ -54,12 +52,15 @@ public class SecurityConfiguration {
 		return new BCryptPasswordEncoder();
 	}
 
-	// 첫 번째 테스트용 임베디드 UserDetailsService 메서드 (오타 교정 및 Member 연결)
+	// 1. 첫 번째 임베디드용 테스트 빈 (에러 방지를 위해 나머지 4개 필수 메서드 오버라이드 추가)
+	@Bean
 	public UserDetailsService userDetailsServiceEmbed(MemberRepository memberRepository) {
 		return new UserDetailsService() {
 			@Override
 			public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-				Member member = memberRepository.findByEmail(username).orElseThrow(() -> new UsernameNotFoundException("User not found"));
+				Member member = memberRepository.findByEmail(username)
+						.orElseThrow(() -> new UsernameNotFoundException("User not found"));
+				
 				return new UserDetails() {
 					@Override
 					public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -75,22 +76,35 @@ public class SecurityConfiguration {
 					public String getUsername() {
 						return member.getEmail();
 					}
+
+					// ⚠️ 아래 4개 메서드가 누락되어 컴파일 에러가 발생했었습니다. 기본값인 true로 채워줍니다.
+					@Override
+					public boolean isAccountNonExpired() { return true; }
+					@Override
+					public boolean isAccountNonLocked() { return true; }
+					@Override
+					public boolean isCredentialsNonExpired() { return true; }
+					@Override
+					public boolean isEnabled() { return true; }
 				};
 			}
 		};
 	}
 
-	// 두 번째 실제 동작용 UserDetailsService 빈
+	// 2. 두 번째 실제 동작용 UserDetailsService 빈
+	// ⚠️ 주의: 스프링은 동일한 타입(UserDetailsService)의 빈이 2개 존재하면 구동할 때 충돌(NoUniqueBeanDefinitionException)이 발생할 수 있습니다.
+	// 이 빈을 메인으로 쓰시려면 위 userDetailsServiceEmbed 메서드의 @Bean 어노테이션을 지우거나, 여기에 @Primary를 붙여주어야 안전합니다.
 	@Bean
 	public UserDetailsService userDetailsService(MemberRepository memberRepository, AuthorityRepository authorityRepository) {
-		return new UserDetailsService() { // ◀ UserDetilsService 오타 수정
+		return new UserDetailsService() { 
 			@Override
-			public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException { // ◀ 메서드명 및 반환타입 오타 수정
-				Member member = memberRepository.findByEmail(username).orElseThrow(() -> new UsernameNotFoundException("User not found")); // ◀ member 오타 수정
+			public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException { 
+				Member member = memberRepository.findByEmail(username)
+						.orElseThrow(() -> new UsernameNotFoundException("User not found")); 
 				List<Authority> authorities = authorityRepository.findByMember(member);
 				return new MemberUser(member, authorities); 
 			}
-		}; // ◀ 닫는 세미콜론 괄호 추가
+		}; 
 	}
 
 	@Bean
@@ -98,23 +112,20 @@ public class SecurityConfiguration {
 		return new WebSecurityCustomizer() {
 			@Override
 			public void customize(WebSecurity web) {
-				web.ignoring().requestMatchers( // ◀ ingnoring, requestMathchers 오타 수정
+				web.ignoring().requestMatchers( 
 						"/css/**",
 						"/js/**",
-						"/image/**", // ◀ 쉼표 누락 추가
-						"/health/**", // ◀ 쉼표 누락 추가
-						"/actuator/**", // ◀ 쉼표 누락 추가
+						"/image/**", 
+						"/health/**", 
+						"/actuator/**", 
 						"/h2-console/**"
 				);
 			}
 		};
 	}
 
-	@Bean // 주석을 해제하여 빈으로 정상 등록 가능하게 설정
-	public FilterRegistrationBean<OpenEntityManagerInViewFilter> filterRegistration() { // ◀ 메서드명 정돈
-		FilterRegistrationBean<OpenEntityManagerInViewFilter> filterRegistrationBean = new FilterRegistrationBean<>(); // ◀ 오타 수정
-		filterRegistrationBean.setFilter(new OpenEntityManagerInViewFilter()); // ◀ 변수명 오타 수정
-		filterRegistrationBean.setOrder(Integer.MIN_VALUE); // ◀ 변수명 오타 수정
-		return filterRegistrationBean;
-	}
-}
+	@Bean 
+	public FilterRegistrationBean<OpenEntityManagerInViewFilter> filterRegistration() { 
+		FilterRegistrationBean<OpenEntityManagerInViewFilter> filterRegistrationBean = new FilterRegistrationBean<>(); 
+		filterRegistrationBean.setFilter(new OpenEntityManagerInViewFilter()); 
+		filterRegistrationBean.setOrder(Integer.MIN_
